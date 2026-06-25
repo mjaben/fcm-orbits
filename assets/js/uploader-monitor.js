@@ -46,6 +46,8 @@
         const videoExts = ['.mp4', '.mov', '.webm', '.avi', '.m4v', '.m3u8', '.mpd'];
 
         const isVideo = file.type.startsWith('video/') || videoExts.some(ext => fileName.endsWith(ext));
+        
+        console.log("FCM Reels: File selected ->", fileName, "| isVideo:", isVideo, "| Size:", file.size);
 
         if (isVideo && file.size > SIZE_LIMIT_BYTES) {
             const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
