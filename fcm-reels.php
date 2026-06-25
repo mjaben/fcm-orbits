@@ -3,7 +3,7 @@
  * Plugin Name: FCM Orbits
  * Plugin URI:  https://intasela.com
  * Description: Video Feed (Orbits)
- * Version:     2.1.0
+ * Version:     2.1.3
  * Author:      Matthew John Alex
  * Text Domain: fcm-reels
  * Requires Plugins: fluent-community, fluent-player
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('FCM_REELS_VERSION', '2.1.0');
+define('FCM_REELS_VERSION', '2.1.3');
 define('FCM_REELS_FILE', __FILE__);
 define('FCM_REELS_DIR', plugin_dir_path(__FILE__));
 define('FCM_REELS_URL', plugin_dir_url(__FILE__));
@@ -23,6 +23,7 @@ define('FCM_REELS_URL', plugin_dir_url(__FILE__));
  */
 add_action('plugins_loaded', 'fcm_reels_init');
 add_action('wp_enqueue_scripts', 'fcm_reels_enqueue_global_assets');
+add_action('fluent_community/portal_footer', 'fcm_reels_inject_script_headless');
 add_action('fcm_reels_hourly_task', ['FCM_Reels_DB', 'aggregate_metrics']);
 
 if (!wp_next_scheduled('fcm_reels_hourly_task')) {
@@ -46,6 +47,21 @@ function fcm_reels_enqueue_global_assets()
         'nonce'   => wp_create_nonce('wp_rest'),
         'apiBase' => esc_url_raw(rest_url('fcm-reels/v1'))
     ]);
+}
+
+/**
+ * Inject the script directly in Fluent Community's Headless mode since wp_footer is bypassed.
+ */
+function fcm_reels_inject_script_headless()
+{
+    $nonce = wp_create_nonce('wp_rest');
+    $apiBase = esc_url_raw(rest_url('fcm-reels/v1'));
+    $scriptUrl = esc_url(FCM_REELS_URL . 'assets/js/uploader-monitor.js?ver=' . FCM_REELS_VERSION);
+    
+    echo "<script type='text/javascript'>
+        window.FCMUploader = { nonce: '{$nonce}', apiBase: '{$apiBase}' };
+    </script>";
+    echo "<script type='text/javascript' src='{$scriptUrl}'></script>";
 }
 
 /**

@@ -8,28 +8,39 @@
     const SIZE_LIMIT_MB = 10;
     const SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024;
 
+    const processedFiles = new Set();
+
     window.handleFileSelection = function(input) {
         if (!input.files || !input.files.length) return;
 
         const file = input.files[0];
-        const fileName = file.name.toLowerCase();
+        const fileName = file.name ? file.name.toLowerCase() : 'video.mp4';
         const videoExts = ['.mp4', '.mov', '.webm', '.avi', '.m4v', '.m3u8', '.mpd'];
 
-        const isVideo = file.type.startsWith('video/') || videoExts.some(ext => fileName.endsWith(ext));
+        const isVideo = (file.type && file.type.startsWith('video/')) || videoExts.some(ext => fileName.endsWith(ext));
         
-        console.log("FCM Reels: File selected ->", fileName, "| isVideo:", isVideo, "| Size:", file.size);
-
         if (isVideo) {
+            // Deduplicate processing
+            const fileKey = fileName + '_' + file.size;
+            if (processedFiles.has(fileKey)) {
+                return; // Already generating/generated thumbnail for this file
+            }
+            
+            console.log("FCM Reels: File selected ->", fileName, "| isVideo:", isVideo, "| Size:", file.size);
+
             if (file.size > SIZE_LIMIT_BYTES) {
                 const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
                 alert(`🚫 VIDEO TOO LARGE!\n\nDetected Size: ${sizeInMB}MB\nAllowed Limit: 10MB\n\nPlease keep videos under 10MB.`);
 
-                input.value = "";
+                if (input.value !== undefined) {
+                    input.value = "";
+                }
                 if (input.dispatchEvent) {
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                     input.dispatchEvent(new Event('input', { bubbles: true }));
                 }
             } else {
+                processedFiles.add(fileKey);
                 generateAndUploadThumbnail(file);
             }
         }
@@ -107,6 +118,7 @@
         };
 
         // 6. Monkey-patch FormData to catch hidden Vue/Axios uploads
+        const originalAppend = FormData.prototype.append;
         FormData.prototype.append = function(name, value, filename) {
             console.log("FCM Reels: FormData.append called for key ->", name);
             try {
@@ -198,10 +210,14 @@
     function generateVideoThumbnail(videoUrl, targetTime = 1) {
         return new Promise((resolve, reject) => {
             const video = document.createElement('video');
-            video.crossOrigin = 'anonymous'; 
+            // Do NOT set crossOrigin='anonymous' for blob URLs, it causes security errors in some browsers.
+            if (!videoUrl.startsWith('blob:')) {
+                video.crossOrigin = 'anonymous'; 
+            }
             video.src = videoUrl;
             video.muted = true;
             video.playsInline = true;
+            video.autoplay = true; // helps some browsers trigger loadedmetadata
 
             video.addEventListener('loadedmetadata', () => {
                 if (targetTime > video.duration) {
