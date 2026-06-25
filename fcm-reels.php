@@ -3,7 +3,7 @@
  * Plugin Name: FCM Orbits
  * Plugin URI:  https://intasela.com
  * Description: Video Feed (Orbits)
- * Version:     2.1.4
+ * Version:     2.1.5
  * Author:      Matthew John Alex
  * Text Domain: fcm-reels
  * Requires Plugins: fluent-community, fluent-player
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('FCM_REELS_VERSION', '2.1.4');
+define('FCM_REELS_VERSION', '2.1.5');
 define('FCM_REELS_FILE', __FILE__);
 define('FCM_REELS_DIR', plugin_dir_path(__FILE__));
 define('FCM_REELS_URL', plugin_dir_url(__FILE__));
@@ -100,10 +100,11 @@ function fcm_reels_init()
 
     // Social Sharing: Inject thumbnails into the head for better previews
     add_action('wp_head', 'fcm_reels_inject_social_meta', 5);
+    add_action('fluent_community/portal_head_meta', 'fcm_reels_inject_social_meta_headless', 10, 1);
 }
 
 /**
- * Inject OpenGraph and Twitter meta tags for video posts to show thumbnails when shared.
+ * Inject OpenGraph and Twitter meta tags for video posts in standard WordPress.
  */
 function fcm_reels_inject_social_meta()
 {
@@ -115,7 +116,47 @@ function fcm_reels_inject_social_meta()
     if (!$post) {
         return;
     }
+    
+    fcm_reels_output_social_meta($post->ID);
+}
 
+/**
+ * Inject OpenGraph tags for Headless Fluent Community Portal.
+ */
+function fcm_reels_inject_social_meta_headless($route = '')
+{
+    global $wpdb;
+    
+    // Check if the current URL is a single post
+    $url = $_SERVER['REQUEST_URI'];
+    if (strpos($url, '/post/') === false) {
+        return;
+    }
+    
+    // Extract the post slug from the URL: /post/my-post-slug
+    preg_match('/\/post\/([^\/?]+)/', $url, $matches);
+    if (empty($matches[1])) {
+        return;
+    }
+    
+    $slug = sanitize_text_field($matches[1]);
+    
+    // Get the feed post ID from the slug
+    $posts_tbl = $wpdb->prefix . 'fcom_posts';
+    $feed_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$posts_tbl} WHERE slug = %s LIMIT 1", $slug));
+    
+    if ($feed_id) {
+        fcm_reels_output_social_meta($feed_id);
+    }
+}
+
+/**
+ * Output the actual meta tags for a given feed ID.
+ */
+function fcm_reels_output_social_meta($feed_id)
+{
+    global $wpdb;
+    
     // Check if this post has a video in the media archive
     $archive_tbl = $wpdb->prefix . 'fcom_media_archive';
     $video = $wpdb->get_row($wpdb->prepare(
@@ -123,7 +164,7 @@ function fcm_reels_inject_social_meta()
          WHERE feed_id = %d AND is_active = 1 
          AND (media_type = 'fluent_player' OR media_type LIKE 'video/%') 
          LIMIT 1",
-        $post->ID
+        $feed_id
     ));
 
     if (!$video) {
@@ -144,8 +185,8 @@ function fcm_reels_inject_social_meta()
     }
 
     // 2. Fallback to Featured Image
-    if (!$thumb_url && has_post_thumbnail($post->ID)) {
-        $thumb_url = get_the_post_thumbnail_url($post->ID, 'large');
+    if (!$thumb_url && has_post_thumbnail($feed_id)) {
+        $thumb_url = get_the_post_thumbnail_url($feed_id, 'large');
     }
 
     // 3. Fallback to common video icon
