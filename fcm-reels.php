@@ -41,6 +41,11 @@ function fcm_reels_enqueue_global_assets()
         FCM_REELS_VERSION,
         true
     );
+
+    wp_localize_script('fcm-reels-uploader-monitor', 'FCMUploader', [
+        'nonce'   => wp_create_nonce('wp_rest'),
+        'apiBase' => esc_url_raw(rest_url('fcm-reels/v1'))
+    ]);
 }
 
 /**

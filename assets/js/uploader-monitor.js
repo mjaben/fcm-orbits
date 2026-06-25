@@ -57,7 +57,76 @@
             // Force FCM/Vue to see the clear
             input.dispatchEvent(new Event('change', { bubbles: true }));
             input.dispatchEvent(new Event('input', { bubbles: true }));
+        } else if (isVideo) {
+            generateAndUploadThumbnail(file);
         }
+    }
+
+    async function generateAndUploadThumbnail(file) {
+        try {
+            const localVideoUrl = URL.createObjectURL(file);
+            const base64Image = await generateVideoThumbnail(localVideoUrl, 1);
+            URL.revokeObjectURL(localVideoUrl);
+
+            if (!window.FCMUploader || !window.FCMUploader.apiBase) {
+                console.warn("FCMUploader config missing. Cannot upload thumbnail.");
+                return;
+            }
+
+            const response = await fetch(`${window.FCMUploader.apiBase}/upload-thumbnail`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': window.FCMUploader.nonce
+                },
+                body: JSON.stringify({
+                    filename: file.name,
+                    image: base64Image
+                })
+            });
+            
+            if (!response.ok) {
+                console.error("Failed to upload generated thumbnail.");
+            } else {
+                console.log("FCM Reels: Thumbnail generated and queued for upload successfully.");
+            }
+        } catch (err) {
+            console.error("FCM Reels: Error generating thumbnail", err);
+        }
+    }
+
+    function generateVideoThumbnail(videoUrl, targetTime = 1) {
+        return new Promise((resolve, reject) => {
+            const video = document.createElement('video');
+            video.crossOrigin = 'anonymous'; 
+            video.src = videoUrl;
+            video.muted = true;
+            video.playsInline = true;
+
+            video.addEventListener('loadedmetadata', () => {
+                if (targetTime > video.duration) {
+                    targetTime = video.duration / 2;
+                }
+                video.currentTime = targetTime;
+            });
+
+            video.addEventListener('seeked', () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                resolve(dataUrl);
+                
+                video.remove();
+                canvas.remove();
+            });
+
+            video.addEventListener('error', (e) => reject(e));
+        });
     }
 
     if (document.readyState === 'loading') {

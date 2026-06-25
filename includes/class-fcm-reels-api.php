@@ -19,6 +19,7 @@ class FCM_Reels_API {
     public function register() {
         add_action( 'rest_api_init', [ $this, 'register_routes' ] );
         add_action( 'add_attachment', [ $this, 'sync_to_cf_stream' ] );
+        add_action( 'add_attachment', [ $this, 'link_thumbnail_to_video' ] );
     }
 
     /**
@@ -152,6 +153,17 @@ class FCM_Reels_API {
                     'required'          => true,
                     'sanitize_callback' => 'absint',
                 ],
+            ],
+        ] );
+
+        // POST /fcm-reels/v1/upload-thumbnail (Client-side thumbnail generation)
+        register_rest_route( $namespace, '/upload-thumbnail', [
+            'methods'             => 'POST',
+            'callback'            => [ $this, 'upload_thumbnail' ],
+            'permission_callback' => [ $this, 'require_login' ],
+            'args'                => [
+                'filename' => [ 'required' => true, 'sanitize_callback' => 'sanitize_text_field' ],
+                'image'    => [ 'required' => true ],
             ],
         ] );
     }
@@ -355,6 +367,93 @@ class FCM_Reels_API {
             'liked'       => $liked,
             'likes_count' => $new_count,
         ] );
+    }
+
+    /**
+     * POST /fcm-reels/v1/upload-thumbnail
+     * Receives a base64 generated thumbnail from the client and saves it as an attachment.
+     * Maps it to the current user and filename so it can be linked when the video finishes uploading.
+     */
+    public function upload_thumbnail( WP_REST_Request $request ) {
+        $filename   = sanitize_file_name( $request->get_param( 'filename' ) );
+        $base64_img = $request->get_param( 'image' );
+        $user_id    = get_current_user_id();
+
+        if ( empty( $base64_img ) || strpos( $base64_img, 'data:image/' ) !== 0 ) {
+            return new WP_Error( 'invalid_image', 'Invalid base64 image data.', [ 'status' => 400 ] );
+        }
+
+        list( $type, $data ) = explode( ';', $base64_img );
+        list( , $data )      = explode( ',', $data );
+        $data = base64_decode( $data );
+
+        if ( ! $data ) {
+            return new WP_Error( 'decode_failed', 'Failed to decode base64 image.', [ 'status' => 400 ] );
+        }
+
+        $ext = 'jpg';
+        if ( strpos( $type, 'png' ) !== false ) $ext = 'png';
+        
+        $thumb_filename = 'fcm-thumb-' . wp_generate_password( 8, false ) . '-' . time() . '.' . $ext;
+        
+        $upload_dir = wp_upload_dir();
+        $file_path  = $upload_dir['path'] . '/' . $thumb_filename;
+        file_put_contents( $file_path, $data );
+
+        $file_type = wp_check_filetype( $thumb_filename, null );
+        
+        $attachment = [
+            'guid'           => $upload_dir['url'] . '/' . $thumb_filename,
+            'post_mime_type' => $file_type['type'],
+            'post_title'     => preg_replace( '/\.[^.]+$/', '', $thumb_filename ),
+            'post_content'   => '',
+            'post_status'    => 'inherit'
+        ];
+
+        $attach_id = wp_insert_attachment( $attachment, $file_path );
+        require_once( ABSPATH . 'wp-admin/includes/image.php' );
+        $attach_data = wp_generate_attachment_metadata( $attach_id, $file_path );
+        wp_update_attachment_metadata( $attach_id, $attach_data );
+
+        // Map the generated thumbnail to the user and original video filename
+        $cache_key = 'fcm_thumb_' . $user_id . '_' . md5( $filename );
+        set_transient( $cache_key, $attach_id, 3600 ); // Keep for 1 hour
+
+        return rest_ensure_response( [ 'success' => true, 'attachment_id' => $attach_id ] );
+    }
+
+    /**
+     * Link the pre-generated thumbnail to the uploaded video.
+     * Runs on add_attachment hook.
+     */
+    public function link_thumbnail_to_video( $attachment_id ) {
+        $post = get_post( $attachment_id );
+        if ( ! $post || strpos( $post->post_mime_type, 'video/' ) === false ) return;
+
+        $user_id  = $post->post_author;
+        $filename = '';
+
+        if ( ! empty( $_FILES ) ) {
+            foreach ( $_FILES as $file ) {
+                if ( ! empty( $file['name'] ) ) {
+                    $filename = sanitize_file_name( wp_unslash( $file['name'] ) );
+                    break;
+                }
+            }
+        }
+
+        if ( empty( $filename ) ) {
+            $file_path = get_post_meta( $attachment_id, '_wp_attached_file', true );
+            $filename  = sanitize_file_name( basename( $file_path ) );
+        }
+
+        $cache_key = 'fcm_thumb_' . $user_id . '_' . md5( $filename );
+        $thumb_id  = get_transient( $cache_key );
+
+        if ( $thumb_id ) {
+            update_post_meta( $attachment_id, '_thumbnail_id', $thumb_id );
+            delete_transient( $cache_key );
+        }
     }
 
 }
