@@ -72,6 +72,16 @@ class FCM_Reels_DB {
         dbDelta( $sql_events );
         dbDelta( $sql_metrics );
         dbDelta( $sql_sessions );
+
+        // 4. Alter external fcom_posts table if necessary
+        $posts_table = $wpdb->prefix . 'fcom_posts';
+        // Check if the table exists first (in case FluentCommunity isn't active or loaded yet)
+        if ( $wpdb->get_var( "SHOW TABLES LIKE '$posts_table'" ) === $posts_table ) {
+            $column_exists = $wpdb->get_results( "SHOW COLUMNS FROM $posts_table LIKE 'views_count'" );
+            if ( empty( $column_exists ) ) {
+                $wpdb->query( "ALTER TABLE $posts_table ADD COLUMN views_count INT DEFAULT 0 AFTER reactions_count" );
+            }
+        }
     }
 
     /**
@@ -154,5 +164,37 @@ class FCM_Reels_DB {
                 'updated_at'       => current_time( 'mysql' ),
             ] );
         }
+    }
+
+    /**
+     * Sync views based on Likes (150%).
+     * 
+     * @return int Number of videos processed.
+     */
+    public static function sync_views_from_likes() {
+        global $wpdb;
+        $posts_tbl = $wpdb->prefix . 'fcom_posts';
+        $metrics_tbl = self::get_metrics_table();
+
+        // Get all published videos
+        $videos = $wpdb->get_results( "SELECT id, reactions_count FROM $posts_tbl WHERE status = 'published'" );
+        if ( ! $videos ) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ( $videos as $v ) {
+            $likes = (int) $v->reactions_count;
+            $target_views = ceil( $likes * 1.5 );
+
+            // Update main posts table
+            $wpdb->update( $posts_tbl, [ 'views_count' => $target_views ], [ 'id' => $v->id ] );
+
+            // Update metrics table if it exists
+            $wpdb->update( $metrics_tbl, [ 'total_views' => $target_views ], [ 'video_id' => $v->id ] );
+
+            $count++;
+        }
+        return $count;
     }
 }

@@ -121,6 +121,13 @@ class FCM_Reels_Admin {
             echo '<div class="fcm-orbit-notice"><span class="dashicons dashicons-database-add" style="color: #2ecc71; font-size: 24px; width: 24px; height: 24px;"></span> <p>Database tables synchronized successfully!</p></div>';
         }
 
+        // Handle Sync Views
+        if ( isset( $_POST['fcm_reels_sync_views'] ) ) {
+            check_admin_referer( 'fcm_reels_settings' );
+            $processed = FCM_Reels_DB::sync_views_from_likes();
+            echo '<div class="fcm-orbit-notice"><span class="dashicons dashicons-visibility" style="color: #3498db; font-size: 24px; width: 24px; height: 24px;"></span> <p>Successfully synced views for ' . (int) $processed . ' videos based on likes!</p></div>';
+        }
+
         $page_id         = (int) get_option( 'fcm_reels_page_id' );
         $require_login   = get_option( 'fcm_reels_require_login', 'no' );
         $cf_account_id   = get_option( 'fcm_reels_cf_account_id' );
@@ -161,8 +168,12 @@ class FCM_Reels_Admin {
                         <a href="<?php echo admin_url('admin.php?page=fcm-reels&tab=settings'); ?>" class="fcm-orbit-tab <?php echo $active_tab === 'settings' ? 'active' : ''; ?>">Settings</a>
                         <a href="<?php echo admin_url('admin.php?page=fcm-reels&tab=analytics'); ?>" class="fcm-orbit-tab <?php echo $active_tab === 'analytics' ? 'active' : ''; ?>">Analytics</a>
                     </nav>
-                    <form method="post" action="" style="margin: 0;">
+                    <form method="post" action="" style="margin: 0; display: flex; gap: 10px;">
                         <?php wp_nonce_field( 'fcm_reels_settings' ); ?>
+                        <button type="submit" name="fcm_reels_sync_views" class="fcm-orbit-button" style="background: transparent; color: var(--orbit-text-muted); box-shadow: none; border: 1px solid var(--orbit-border); padding: 8px 15px; font-size: 13px;" title="Bootstrap Views (Likes x 1.5)">
+                            <span class="dashicons dashicons-visibility" style="font-size: 16px; width: 16px; height: 16px;"></span>
+                            Sync Views
+                        </button>
                         <button type="submit" name="fcm_reels_purge_cache" class="fcm-orbit-button" style="background: transparent; color: var(--orbit-text-muted); box-shadow: none; border: 1px solid var(--orbit-border); padding: 8px 15px; font-size: 13px;">
                             <span class="dashicons dashicons-trash" style="font-size: 16px; width: 16px; height: 16px;"></span>
                             Purge Cache
