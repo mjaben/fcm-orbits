@@ -3,7 +3,7 @@
  * Plugin Name: FCM Orbits
  * Plugin URI:  https://intasela.com
  * Description: Video Feed (Orbits)
- * Version:     2.1.5
+ * Version:     2.1.6
  * Author:      Matthew John Alex
  * Text Domain: fcm-reels
  * Requires Plugins: fluent-community, fluent-player
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('FCM_REELS_VERSION', '2.1.5');
+define('FCM_REELS_VERSION', '2.1.6');
 define('FCM_REELS_FILE', __FILE__);
 define('FCM_REELS_DIR', plugin_dir_path(__FILE__));
 define('FCM_REELS_URL', plugin_dir_url(__FILE__));
@@ -117,6 +117,22 @@ function fcm_reels_inject_social_meta()
         return;
     }
     
+    // Support for custom Orbits URL structure: /{username}/orbits/{slug}/
+    $url = $_SERVER['REQUEST_URI'];
+    if (strpos($url, '/orbits/') !== false) {
+        preg_match('/\/orbits\/([^\/?]+)/', $url, $matches);
+        if (!empty($matches[1])) {
+            $slug = sanitize_text_field($matches[1]);
+            $posts_tbl = $wpdb->prefix . 'fcom_posts';
+            $feed_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$posts_tbl} WHERE slug = %s LIMIT 1", $slug));
+            
+            if ($feed_id) {
+                fcm_reels_output_social_meta($feed_id);
+                return;
+            }
+        }
+    }
+
     fcm_reels_output_social_meta($post->ID);
 }
 
