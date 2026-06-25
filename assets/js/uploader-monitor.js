@@ -35,6 +35,34 @@
         });
 
         observer.observe(document.body, { childList: true, subtree: true });
+
+        // 3. Monkey-patch FormData to catch hidden Vue/Axios uploads and Drag-and-Drop
+        const originalAppend = FormData.prototype.append;
+        FormData.prototype.append = function(name, value, filename) {
+            if (value instanceof File) {
+                const fname = (filename || value.name).toLowerCase();
+                const videoExts = ['.mp4', '.mov', '.webm', '.avi', '.m4v', '.m3u8', '.mpd'];
+                const isVideo = value.type.startsWith('video/') || videoExts.some(ext => fname.endsWith(ext));
+                
+                if (isVideo) {
+                    console.log("FCM Reels: Video detected in FormData ->", fname, "| Size:", value.size);
+                    if (value.size <= SIZE_LIMIT_BYTES) {
+                        // Generate thumbnail before the network request flies
+                        generateAndUploadThumbnail(value);
+                    } else {
+                        const sizeInMB = (value.size / (1024 * 1024)).toFixed(2);
+                        alert(`🚫 VIDEO TOO LARGE!\n\nDetected Size: ${sizeInMB}MB\nAllowed Limit: 10MB\n\nPlease keep videos under 10MB.`);
+                    }
+                }
+            }
+            // Continue with the original append
+            if (filename) {
+                return originalAppend.call(this, name, value, filename);
+            } else {
+                return originalAppend.call(this, name, value);
+            }
+        };
+
         console.log('FCM Reels: Aggressive Uploader Monitor active.');
     }
 

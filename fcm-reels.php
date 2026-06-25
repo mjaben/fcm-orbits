@@ -3,7 +3,7 @@
  * Plugin Name: FCM Orbits
  * Plugin URI:  https://intasela.com
  * Description: Video Feed (Orbits)
- * Version:     2.0.3
+ * Version:     2.0.4
  * Author:      Matthew John Alex
  * Text Domain: fcm-reels
  * Requires Plugins: fluent-community, fluent-player
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('FCM_REELS_VERSION', '2.0.3');
+define('FCM_REELS_VERSION', '2.0.4');
 define('FCM_REELS_FILE', __FILE__);
 define('FCM_REELS_DIR', plugin_dir_path(__FILE__));
 define('FCM_REELS_URL', plugin_dir_url(__FILE__));
