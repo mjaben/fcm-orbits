@@ -126,7 +126,7 @@ class FCM_Reels_Query {
      * @param int    $seed     Random seed.
      * @return array
      */
-    public function get_videos_v2( $cursor = '', $per_page = 8, $space = '', $seed = 0, $seen = '' ) {
+    public function get_videos_v2( $cursor = '', $per_page = 8, $space = '', $seed = 0, $seen = '', $share_id = '' ) {
         $user_id = get_current_user_id();
         $per_page = absint( $per_page );
 
@@ -145,6 +145,25 @@ class FCM_Reels_Query {
         
         if ( empty( $pool ) ) {
             return [ 'videos' => [], 'next_cursor' => null, 'has_more' => false ];
+        }
+
+        // If there's a share ID and this is the first page, force it to the top.
+        if ( $index === 0 && ! empty( $share_id ) ) {
+            global $wpdb;
+            $posts_tbl = $wpdb->prefix . 'fcom_posts';
+            
+            $actual_id = 0;
+            if ( is_numeric( $share_id ) ) {
+                $actual_id = (int) $share_id;
+            } else {
+                $actual_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$posts_tbl} WHERE slug = %s LIMIT 1", $share_id ) );
+            }
+
+            if ( $actual_id > 0 ) {
+                $pool = array_diff( $pool, [ $actual_id ] );
+                array_unshift( $pool, $actual_id );
+                $pool = array_values( $pool );
+            }
         }
 
         // 3. Slice the pool for this chunk

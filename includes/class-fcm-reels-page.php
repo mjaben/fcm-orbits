@@ -21,6 +21,30 @@ class FCM_Reels_Page {
         add_filter( 'page_template', [ $this, 'load_reels_template' ] );
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_assets' ] );
         add_shortcode( 'fcm_reels', [ $this, 'render_shortcode' ] );
+        add_action( 'init', [ $this, 'add_rewrite_rules' ] );
+        add_filter( 'query_vars', [ $this, 'add_query_vars' ] );
+    }
+
+    public function add_query_vars( $vars ) {
+        $vars[] = 'orbit_user';
+        $vars[] = 'orbit_slug';
+        return $vars;
+    }
+
+    public function add_rewrite_rules() {
+        $page_id = (int) get_option( 'fcm_reels_page_id', 0 );
+        if ( ! $page_id ) return;
+        $page = get_post( $page_id );
+        if ( ! $page ) return;
+        
+        $page_slug = $page->post_name;
+        
+        // Match: /username/orbits/slug/
+        add_rewrite_rule(
+            '^([^/]+)/' . $page_slug . '/([^/]+)/?$',
+            'index.php?pagename=' . $page_slug . '&orbit_user=$matches[1]&orbit_slug=$matches[2]',
+            'top'
+        );
     }
 
     /**
@@ -69,11 +93,15 @@ class FCM_Reels_Page {
 
         // Find FCM Portal page for linking.
         $portal_url = $this->get_portal_url();
+        $page_url   = get_permalink( $page_id );
 
         // Pass config to JS.
         wp_localize_script( 'fcm-reels-script', 'FCMReels', [
             'apiBase'      => esc_url_raw( rest_url( 'fcm-reels/v1' ) ),
             'portalUrl'    => esc_url( trailingslashit( $portal_url ) ),
+            'orbitsUrl'    => esc_url( trailingslashit( $page_url ) ),
+            'homeUrl'      => esc_url( trailingslashit( home_url() ) ),
+            'pageSlug'     => $page_id ? get_post_field( 'post_name', $page_id ) : 'orbits',
             'nonce'        => wp_create_nonce( 'wp_rest' ),
             'isLoggedIn'   => is_user_logged_in(),
             'userId'       => get_current_user_id(),
@@ -154,10 +182,15 @@ class FCM_Reels_Page {
 
         // Find FCM Portal page for linking.
         $portal_url = $this->get_portal_url();
+        $page_id    = (int) get_option( 'fcm_reels_page_id', 0 );
+        $page_url   = $page_id ? get_permalink( $page_id ) : home_url( '/orbits/' );
 
         wp_localize_script( 'fcm-reels-script', 'FCMReels', [
             'apiBase'      => esc_url_raw( rest_url( 'fcm-reels/v1' ) ),
             'portalUrl'    => esc_url( trailingslashit( $portal_url ) ),
+            'orbitsUrl'    => esc_url( trailingslashit( $page_url ) ),
+            'homeUrl'      => esc_url( trailingslashit( home_url() ) ),
+            'pageSlug'     => $page_id ? get_post_field( 'post_name', $page_id ) : 'orbits',
             'nonce'        => wp_create_nonce( 'wp_rest' ),
             'isLoggedIn'   => is_user_logged_in(),
             'userId'       => get_current_user_id(),

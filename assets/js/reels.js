@@ -100,6 +100,21 @@
             url += `&cursor=${encodeURIComponent(nextCursor)}`;
         } else {
             url += `&seed=${discoverySeed}`;
+            const urlParams = new URLSearchParams(window.location.search);
+            let shareId = urlParams.get('v');
+            
+            if (!shareId) {
+                const pageSlug = CFG.pageSlug || 'orbits';
+                const pathParts = window.location.pathname.replace(/^\/|\/$/g, '').split('/');
+                const slugIndex = pathParts.indexOf(pageSlug);
+                if (slugIndex > 0 && pathParts.length > slugIndex + 1) {
+                    shareId = pathParts[slugIndex + 1];
+                }
+            }
+
+            if (shareId) {
+                url += `&share_id=${encodeURIComponent(shareId)}`;
+            }
         }
         if (currentSpace) url += `&space=${currentSpace}`;
 
@@ -240,7 +255,13 @@
         slide.querySelector('.reel-share-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             markVideoAsSeen(video.id); // Engagement tracking
-            openShareModal(slide.dataset.postUrl || window.location.href, video.title || '', video.thumbnail_url || '');
+            
+            const homeUrl = CFG.homeUrl || (window.location.origin + '/');
+            const pageSlug = CFG.pageSlug || 'orbits';
+            const username = video.author.username || 'member';
+            const orbitUrl = `${homeUrl}${username}/${pageSlug}/${video.slug}/`;
+            
+            openShareModal(orbitUrl, video.title || '', video.thumbnail_url || '');
         });
 
         videoEl.addEventListener('timeupdate', () => updateProgress(slide, videoEl));
@@ -419,7 +440,18 @@
         if (copyBtn && shareInput) {
             copyBtn.addEventListener('click', () => {
                 shareInput.select();
-                navigator.clipboard.writeText(shareInput.value);
+                shareInput.setSelectionRange(0, 99999);
+                
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(shareInput.value);
+                    } else {
+                        document.execCommand('copy');
+                    }
+                } catch (err) {
+                    console.error('Copy failed', err);
+                }
+                
                 copyBtn.textContent = '✓ Copied!';
                 setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
             });
