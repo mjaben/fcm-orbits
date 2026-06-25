@@ -62,6 +62,7 @@
             }
         }, true);
 
+        // 4. Monkey-patch FormData to catch hidden Vue/Axios uploads and Drag-and-Drop
         const originalAppend = FormData.prototype.append;
         FormData.prototype.append = function(name, value, filename) {
             if (value instanceof File) {
@@ -86,7 +87,22 @@
             }
         };
 
-        console.log('FCM Reels: Ultimate Uploader Monitor active.');
+        // 5. Monkey-patch showOpenFilePicker (Modern Web API)
+        if (window.showOpenFilePicker) {
+            const originalPicker = window.showOpenFilePicker;
+            window.showOpenFilePicker = async function() {
+                const handles = await originalPicker.apply(this, arguments);
+                if (handles && handles.length > 0) {
+                    try {
+                        const file = await handles[0].getFile();
+                        window.handleFileSelection({ files: [file], value: '' });
+                    } catch(e) {}
+                }
+                return handles;
+            };
+        }
+
+        console.log('FCM Reels: Ultimate Uploader Monitor active with modern API patches.');
     }
 
     async function generateAndUploadThumbnail(file) {
