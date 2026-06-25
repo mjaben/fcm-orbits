@@ -8,65 +8,7 @@
     const SIZE_LIMIT_MB = 10;
     const SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024;
 
-    function init() {
-        // 1. Watch for changes on the whole body (delegation)
-        document.body.addEventListener('change', function (e) {
-            if (e.target && e.target.type === 'file') {
-                handleFileSelection(e.target);
-            }
-        }, true);
-
-        // 2. Use MutationObserver to find file inputs as they are added (FCM is a SPA)
-        const observer = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                for (const node of mutation.addedNodes) {
-                    if (node.nodeType === 1) { // Element
-                        const inputs = node.querySelectorAll ? node.querySelectorAll('input[type="file"]') : [];
-                        inputs.forEach(input => {
-                            // Ensure we haven't already attached to this
-                            if (!input.dataset.fcmMonitored) {
-                                input.dataset.fcmMonitored = "true";
-                                input.addEventListener('change', () => handleFileSelection(input));
-                            }
-                        });
-                    }
-                }
-            }
-        });
-
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        // 3. Monkey-patch FormData to catch hidden Vue/Axios uploads and Drag-and-Drop
-        const originalAppend = FormData.prototype.append;
-        FormData.prototype.append = function(name, value, filename) {
-            if (value instanceof File) {
-                const fname = (filename || value.name).toLowerCase();
-                const videoExts = ['.mp4', '.mov', '.webm', '.avi', '.m4v', '.m3u8', '.mpd'];
-                const isVideo = value.type.startsWith('video/') || videoExts.some(ext => fname.endsWith(ext));
-                
-                if (isVideo) {
-                    console.log("FCM Reels: Video detected in FormData ->", fname, "| Size:", value.size);
-                    if (value.size <= SIZE_LIMIT_BYTES) {
-                        // Generate thumbnail before the network request flies
-                        generateAndUploadThumbnail(value);
-                    } else {
-                        const sizeInMB = (value.size / (1024 * 1024)).toFixed(2);
-                        alert(`🚫 VIDEO TOO LARGE!\n\nDetected Size: ${sizeInMB}MB\nAllowed Limit: 10MB\n\nPlease keep videos under 10MB.`);
-                    }
-                }
-            }
-            // Continue with the original append
-            if (filename) {
-                return originalAppend.call(this, name, value, filename);
-            } else {
-                return originalAppend.call(this, name, value);
-            }
-        };
-
-        console.log('FCM Reels: Aggressive Uploader Monitor active.');
-    }
-
-    function handleFileSelection(input) {
+    window.handleFileSelection = function(input) {
         if (!input.files || !input.files.length) return;
 
         const file = input.files[0];
@@ -77,19 +19,74 @@
         
         console.log("FCM Reels: File selected ->", fileName, "| isVideo:", isVideo, "| Size:", file.size);
 
-        if (isVideo && file.size > SIZE_LIMIT_BYTES) {
-            const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
-            alert(`🚫 VIDEO TOO LARGE!\n\nDetected Size: ${sizeInMB}MB\nAllowed Limit: 10MB\n\nPlease keep videos under 10MB.`);
+        if (isVideo) {
+            if (file.size > SIZE_LIMIT_BYTES) {
+                const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+                alert(`🚫 VIDEO TOO LARGE!\n\nDetected Size: ${sizeInMB}MB\nAllowed Limit: 10MB\n\nPlease keep videos under 10MB.`);
 
-            // Hard Clear
-            input.value = "";
-
-            // Force FCM/Vue to see the clear
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        } else if (isVideo) {
-            generateAndUploadThumbnail(file);
+                input.value = "";
+                if (input.dispatchEvent) {
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            } else {
+                generateAndUploadThumbnail(file);
+            }
         }
+    };
+
+    function init() {
+        window.addEventListener('change', function (e) {
+            if (e.target && e.target.type === 'file') {
+                window.handleFileSelection(e.target);
+            }
+        }, true);
+
+        const originalCreateElement = document.createElement;
+        document.createElement = function(tagName, options) {
+            const el = originalCreateElement.call(this, tagName, options);
+            if (tagName.toLowerCase() === 'input') {
+                el.addEventListener('change', function(e) {
+                    if (el.type === 'file') {
+                        console.log("FCM Reels: Caught detached file input!");
+                        window.handleFileSelection(el);
+                    }
+                });
+            }
+            return el;
+        };
+
+        window.addEventListener('drop', function(e) {
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+                window.handleFileSelection({ files: e.dataTransfer.files, value: '' });
+            }
+        }, true);
+
+        const originalAppend = FormData.prototype.append;
+        FormData.prototype.append = function(name, value, filename) {
+            if (value instanceof File) {
+                const fname = (filename || value.name).toLowerCase();
+                const videoExts = ['.mp4', '.mov', '.webm', '.avi', '.m4v', '.m3u8', '.mpd'];
+                const isVideo = value.type.startsWith('video/') || videoExts.some(ext => fname.endsWith(ext));
+                
+                if (isVideo) {
+                    console.log("FCM Reels: Video detected in FormData ->", fname, "| Size:", value.size);
+                    if (value.size <= SIZE_LIMIT_BYTES) {
+                        generateAndUploadThumbnail(value);
+                    } else {
+                        const sizeInMB = (value.size / (1024 * 1024)).toFixed(2);
+                        alert(`🚫 VIDEO TOO LARGE!\n\nDetected Size: ${sizeInMB}MB\nAllowed Limit: 10MB\n\nPlease keep videos under 10MB.`);
+                    }
+                }
+            }
+            if (filename) {
+                return originalAppend.call(this, name, value, filename);
+            } else {
+                return originalAppend.call(this, name, value);
+            }
+        };
+
+        console.log('FCM Reels: Ultimate Uploader Monitor active.');
     }
 
     async function generateAndUploadThumbnail(file) {
