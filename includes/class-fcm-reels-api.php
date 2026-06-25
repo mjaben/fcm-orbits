@@ -20,6 +20,7 @@ class FCM_Reels_API {
         add_action( 'rest_api_init', [ $this, 'register_routes' ] );
         add_action( 'add_attachment', [ $this, 'sync_to_cf_stream' ] );
         add_action( 'add_attachment', [ $this, 'link_thumbnail_to_video' ] );
+        add_filter( 'fluent_community/media_upload_data', [ $this, 'link_thumbnail_to_fc_media' ], 10, 2 );
     }
 
     /**
@@ -454,6 +455,36 @@ class FCM_Reels_API {
             update_post_meta( $attachment_id, '_thumbnail_id', $thumb_id );
             delete_transient( $cache_key );
         }
+    }
+
+    /**
+     * Link thumbnail to Fluent Community media upload.
+     * Fluent Community doesn't use wp_insert_attachment for video uploads, so we intercept
+     * the media creation data directly and set the posterSrc.
+     */
+    public function link_thumbnail_to_fc_media( $mediaData, $file ) {
+        if ( empty( $file['original_name'] ) ) {
+            return $mediaData;
+        }
+
+        $user_id   = get_current_user_id();
+        $filename  = sanitize_file_name( wp_unslash( $file['original_name'] ) );
+        $cache_key = 'fcm_thumb_' . $user_id . '_' . md5( $filename );
+        $thumb_id  = get_transient( $cache_key );
+
+        if ( $thumb_id ) {
+            $thumb_url = wp_get_attachment_url( $thumb_id );
+            if ( $thumb_url ) {
+                if ( ! isset( $mediaData['settings'] ) ) {
+                    $mediaData['settings'] = [];
+                }
+                $mediaData['settings']['posterSrc'] = $thumb_url;
+                $mediaData['settings']['thumbnail_id'] = $thumb_id; // For reference
+            }
+            delete_transient( $cache_key );
+        }
+
+        return $mediaData;
     }
 
 }

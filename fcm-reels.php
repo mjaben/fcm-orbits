@@ -3,7 +3,7 @@
  * Plugin Name: FCM Orbits
  * Plugin URI:  https://intasela.com
  * Description: Video Feed (Orbits)
- * Version:     2.1.3
+ * Version:     2.1.4
  * Author:      Matthew John Alex
  * Text Domain: fcm-reels
  * Requires Plugins: fluent-community, fluent-player
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('FCM_REELS_VERSION', '2.1.3');
+define('FCM_REELS_VERSION', '2.1.4');
 define('FCM_REELS_FILE', __FILE__);
 define('FCM_REELS_DIR', plugin_dir_path(__FILE__));
 define('FCM_REELS_URL', plugin_dir_url(__FILE__));
@@ -119,7 +119,7 @@ function fcm_reels_inject_social_meta()
     // Check if this post has a video in the media archive
     $archive_tbl = $wpdb->prefix . 'fcom_media_archive';
     $video = $wpdb->get_row($wpdb->prepare(
-        "SELECT media_url, media_type FROM {$archive_tbl} 
+        "SELECT media_url, media_type, settings FROM {$archive_tbl} 
          WHERE feed_id = %d AND is_active = 1 
          AND (media_type = 'fluent_player' OR media_type LIKE 'video/%') 
          LIMIT 1",
@@ -132,12 +132,23 @@ function fcm_reels_inject_social_meta()
 
     $thumb_url = '';
 
-    // 1. Prioritize Featured Image
-    if (has_post_thumbnail($post->ID)) {
+    // 1. Try to get thumbnail from Fluent Player media settings
+    if (!empty($video->settings)) {
+        $settings = json_decode($video->settings, true);
+        if (!$settings && is_string($video->settings)) {
+            $settings = maybe_unserialize($video->settings);
+        }
+        if (is_array($settings) && !empty($settings['posterSrc'])) {
+            $thumb_url = $settings['posterSrc'];
+        }
+    }
+
+    // 2. Fallback to Featured Image
+    if (!$thumb_url && has_post_thumbnail($post->ID)) {
         $thumb_url = get_the_post_thumbnail_url($post->ID, 'large');
     }
 
-    // 2. Fallback to common video icon if no thumbnail exists
+    // 3. Fallback to common video icon
     if (!$thumb_url) {
         $thumb_url = FCM_REELS_URL . 'assets/img/video-icon.png';
     }
@@ -145,6 +156,7 @@ function fcm_reels_inject_social_meta()
     if ($thumb_url) {
         echo "\n<!-- FCM Reels Social Meta -->\n";
         echo '<meta property="og:image" content="' . esc_url($thumb_url) . '" />' . "\n";
+        echo '<meta property="og:image:secure_url" content="' . esc_url($thumb_url) . '" />' . "\n";
         echo '<meta property="og:image:width" content="1200" />' . "\n";
         echo '<meta property="og:image:height" content="630" />' . "\n";
         echo '<meta name="twitter:card" content="summary_large_image" />' . "\n";
