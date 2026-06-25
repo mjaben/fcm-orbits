@@ -315,7 +315,7 @@ class FCM_Reels_API {
 
         $feed_id    = $request->get_param( 'id' );
         $user_id    = get_current_user_id();
-        $react_tbl  = $wpdb->prefix . 'fcom_reactions';
+        $react_tbl  = $wpdb->prefix . 'fcom_post_reactions';
         $posts_tbl  = $wpdb->prefix . 'fcom_posts';
 
         // Confirm the post is a published video.

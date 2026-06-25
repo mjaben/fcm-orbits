@@ -62,8 +62,9 @@ class FCM_Reels_Query {
         // [B] Freshness Boost: Gives brand new videos (last 24h) a head start.
         // [C] Shuffle Force: Ensures a different experience on every reload/loop.
         $order_sql = "
-            (LOG10(p.reactions_count + p.comments_count + 1) * 2.0)
-            + (CASE WHEN p.created_at > NOW() - INTERVAL 1 DAY THEN 1.5 ELSE 0 END)
+            (CASE WHEN p.created_at > NOW() - INTERVAL 3 DAY THEN 100.0 ELSE 0 END)
+            - (DATEDIFF(NOW(), ma.created_at) * 1.5)
+            + (LOG10(p.reactions_count + p.comments_count + 1) * 2.0)
             + (RAND({$seed}) * 2.5)
             DESC
         ";
@@ -202,7 +203,7 @@ class FCM_Reels_Query {
     private function get_discovery_pool( $user_id, $space, $seed, $seen = '' ) {
         // We do not include $seen in the cache key.
         // We want the pool to be generated and cached specifically with the penalty applied for this exact session seed.
-        $cache_key = "fcm_reels_pool_{$user_id}_" . md5( $space . $seed );
+        $cache_key = "fcm_reels_pool_v3_{$user_id}_" . md5( $space . $seed );
         $pool = get_transient( $cache_key );
 
         if ( $pool !== false ) {
@@ -231,6 +232,14 @@ class FCM_Reels_Query {
         }
 
         $metrics_tbl = FCM_Reels_DB::get_metrics_table();
+        $react_tbl   = $wpdb->prefix . 'fcom_post_reactions';
+
+        $user_likes_join = "";
+        $engaged_penalty = "";
+        if ( $user_id ) {
+            $user_likes_join = $wpdb->prepare( "LEFT JOIN {$react_tbl} ur ON ur.object_id = p.id AND ur.object_type = 'feed' AND ur.user_id = %d AND ur.type = 'like'", $user_id );
+            $engaged_penalty = "- (CASE WHEN ur.id IS NOT NULL THEN 500.0 ELSE 0 END)";
+        }
 
         // Generate the ranked universe using the Intelligent Analytics Waterfall
         $sql = "
@@ -239,17 +248,20 @@ class FCM_Reels_Query {
             INNER JOIN {$archive_tbl} ma ON ma.feed_id = p.id
             LEFT JOIN {$spaces_tbl} sp ON sp.id = p.space_id
             LEFT JOIN {$metrics_tbl} m ON m.video_id = p.id
+            {$user_likes_join}
             WHERE ma.is_active = 1
               AND (ma.media_type = 'fluent_player' OR ma.media_type LIKE 'video/%' OR ma.media_type = 'video')
               AND p.status = 'published'
               {$space_where}
             ORDER BY (
-                (LOG10(IFNULL(m.avg_watch_time, 0) + 1) * 2.0)
+                (CASE WHEN p.created_at > NOW() - INTERVAL 3 DAY THEN 100.0 ELSE 0 END)
+                + (LOG10(IFNULL(m.avg_watch_time, 0) + 1) * 2.0)
                 + (IFNULL(m.completion_rate, 0) * 0.003) 
                 + (LOG10(IFNULL(m.engagement_score, 0) + 1) * 2.0)
-                - (DATEDIFF(NOW(), p.created_at) * 0.1) -- Time penalty
+                - (DATEDIFF(NOW(), p.created_at) * 1.5) -- Strong time penalty for older videos
                 + (RAND({$seed}) * 5.0) -- Higher random factor for fresh discovery
                 {$seen_penalty}
+                {$engaged_penalty}
             ) DESC
             LIMIT 500
         ";
@@ -421,7 +433,7 @@ class FCM_Reels_Query {
         }
 
         global $wpdb;
-        $reactions_tbl = $wpdb->prefix . 'fcom_reactions';
+        $reactions_tbl = $wpdb->prefix . 'fcom_post_reactions';
 
         return (bool) $wpdb->get_var(
             $wpdb->prepare(
