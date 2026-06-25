@@ -3,7 +3,7 @@
  * Plugin Name: FCM Orbits
  * Plugin URI:  https://intasela.com
  * Description: Video Feed (Orbits)
- * Version:     2.1.6
+ * Version:     2.1.7
  * Author:      Matthew John Alex
  * Text Domain: fcm-reels
  * Requires Plugins: fluent-community, fluent-player
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('FCM_REELS_VERSION', '2.1.6');
+define('FCM_REELS_VERSION', '2.1.7');
 define('FCM_REELS_FILE', __FILE__);
 define('FCM_REELS_DIR', plugin_dir_path(__FILE__));
 define('FCM_REELS_URL', plugin_dir_url(__FILE__));
@@ -187,7 +187,28 @@ function fcm_reels_output_social_meta($feed_id)
         return;
     }
 
-    $thumb_url = '';
+    // Fetch the post content for the description and title
+    $posts_tbl = $wpdb->prefix . 'fcom_posts';
+    $feed_post = $wpdb->get_row($wpdb->prepare(
+        "SELECT content, author_id FROM {$posts_tbl} WHERE id = %d LIMIT 1",
+        $feed_id
+    ));
+
+    $description = '';
+    $title = 'Video Post';
+    
+    if ($feed_post) {
+        $description = wp_strip_all_tags($feed_post->content);
+        // Truncate description for meta tag
+        if (mb_strlen($description) > 200) {
+            $description = mb_substr($description, 0, 197) . '...';
+        }
+        
+        $user_info = get_userdata($feed_post->author_id);
+        if ($user_info) {
+            $title = $user_info->display_name . ' posted a video';
+        }
+    }
 
     // 1. Try to get thumbnail from Fluent Player media settings
     if (!empty($video->settings)) {
@@ -210,14 +231,28 @@ function fcm_reels_output_social_meta($feed_id)
         $thumb_url = FCM_REELS_URL . 'assets/img/video-icon.png';
     }
 
-    if ($thumb_url) {
+    if ($thumb_url || $description) {
         echo "\n<!-- FCM Reels Social Meta -->\n";
-        echo '<meta property="og:image" content="' . esc_url($thumb_url) . '" />' . "\n";
-        echo '<meta property="og:image:secure_url" content="' . esc_url($thumb_url) . '" />' . "\n";
-        echo '<meta property="og:image:width" content="1200" />' . "\n";
-        echo '<meta property="og:image:height" content="630" />' . "\n";
-        echo '<meta name="twitter:card" content="summary_large_image" />' . "\n";
-        echo '<meta name="twitter:image" content="' . esc_url($thumb_url) . '" />' . "\n";
+        
+        if ($title) {
+            echo '<meta property="og:title" content="' . esc_attr($title) . '" />' . "\n";
+            echo '<meta name="twitter:title" content="' . esc_attr($title) . '" />' . "\n";
+        }
+        
+        if ($description) {
+            echo '<meta property="og:description" content="' . esc_attr($description) . '" />' . "\n";
+            echo '<meta name="twitter:description" content="' . esc_attr($description) . '" />' . "\n";
+        }
+        
+        if ($thumb_url) {
+            echo '<meta property="og:image" content="' . esc_url($thumb_url) . '" />' . "\n";
+            echo '<meta property="og:image:secure_url" content="' . esc_url($thumb_url) . '" />' . "\n";
+            echo '<meta property="og:image:width" content="1200" />' . "\n";
+            echo '<meta property="og:image:height" content="630" />' . "\n";
+            echo '<meta name="twitter:card" content="summary_large_image" />' . "\n";
+            echo '<meta name="twitter:image" content="' . esc_url($thumb_url) . '" />' . "\n";
+        }
+        
         echo "<!-- End FCM Reels Social Meta -->\n\n";
     }
 }
