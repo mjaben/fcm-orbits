@@ -62,16 +62,70 @@
             }
         }, true);
 
-        // 4. Monkey-patch FormData to catch hidden Vue/Axios uploads and Drag-and-Drop
-        const originalAppend = FormData.prototype.append;
+        // 4. Monkey-patch URL.createObjectURL to catch local video previews
+        const origCreateObjectURL = URL.createObjectURL;
+        URL.createObjectURL = function(obj) {
+            if (obj && typeof obj === 'object' && obj.size && obj.type) {
+                let fname = obj.name || 'video.mp4';
+                if (obj.type.startsWith('video/') || fname.match(/\.(mp4|mov|avi|wmv|flv|webm|mkv|m4v)$/i)) {
+                    console.log("FCM Reels: Caught video via URL.createObjectURL ->", fname);
+                    if (window.handleFileSelection) {
+                        window.handleFileSelection({ files: [obj], value: '' });
+                    }
+                }
+            }
+            return origCreateObjectURL.apply(this, arguments);
+        };
+
+        // 5. Monkey-patch FileReader to catch local video reads
+        const origReadAsDataURL = FileReader.prototype.readAsDataURL;
+        FileReader.prototype.readAsDataURL = function(blob) {
+            if (blob && typeof blob === 'object' && blob.size && blob.type) {
+                let fname = blob.name || 'video.mp4';
+                if (blob.type.startsWith('video/') || fname.match(/\.(mp4|mov|avi|wmv|flv|webm|mkv|m4v)$/i)) {
+                    console.log("FCM Reels: Caught video via FileReader.readAsDataURL ->", fname);
+                    if (window.handleFileSelection) {
+                        window.handleFileSelection({ files: [blob], value: '' });
+                    }
+                }
+            }
+            return origReadAsDataURL.apply(this, arguments);
+        };
+
+        const origReadAsArrayBuffer = FileReader.prototype.readAsArrayBuffer;
+        FileReader.prototype.readAsArrayBuffer = function(blob) {
+            if (blob && typeof blob === 'object' && blob.size && blob.type) {
+                let fname = blob.name || 'video.mp4';
+                if (blob.type.startsWith('video/') || fname.match(/\.(mp4|mov|avi|wmv|flv|webm|mkv|m4v)$/i)) {
+                    console.log("FCM Reels: Caught video via FileReader.readAsArrayBuffer ->", fname);
+                    if (window.handleFileSelection) {
+                        window.handleFileSelection({ files: [blob], value: '' });
+                    }
+                }
+            }
+            return origReadAsArrayBuffer.apply(this, arguments);
+        };
+
+        // 6. Monkey-patch FormData to catch hidden Vue/Axios uploads
         FormData.prototype.append = function(name, value, filename) {
-            if (value instanceof File) {
-                const fname = (filename || value.name).toLowerCase();
-                const videoExts = ['.mp4', '.mov', '.webm', '.avi', '.m4v', '.m3u8', '.mpd'];
-                const isVideo = value.type.startsWith('video/') || videoExts.some(ext => fname.endsWith(ext));
-                
+            console.log("FCM Reels: FormData.append called for key ->", name);
+            try {
+                let isVideo = false;
+                let actualFilename = filename;
+
+                // Duck-typing check to handle Vue 3 Proxies and cross-iframe File objects
+                // A File/Blob always has 'size' and 'type' properties
+                const isFileLike = value && typeof value === 'object' && typeof value.size === 'number' && typeof value.type === 'string';
+
+                if (isFileLike) {
+                    actualFilename = actualFilename || value.name || 'video.mp4';
+                    if (value.type.startsWith('video/') || (actualFilename && actualFilename.match(/\.(mp4|mov|avi|wmv|flv|webm|mkv|m4v)$/i))) {
+                        isVideo = true;
+                    }
+                }
+
                 if (isVideo) {
-                    console.log("FCM Reels: Video detected in FormData ->", fname, "| Size:", value.size);
+                    console.log("FCM Reels: Video detected in FormData ->", actualFilename, "| Size:", value.size);
                     if (value.size <= SIZE_LIMIT_BYTES) {
                         generateAndUploadThumbnail(value);
                     } else {
@@ -79,7 +133,10 @@
                         alert(`🚫 VIDEO TOO LARGE!\n\nDetected Size: ${sizeInMB}MB\nAllowed Limit: 10MB\n\nPlease keep videos under 10MB.`);
                     }
                 }
+            } catch(e) {
+                console.error("FCM Reels: FormData intercept error", e);
             }
+            
             if (filename) {
                 return originalAppend.call(this, name, value, filename);
             } else {
@@ -177,4 +234,86 @@
     } else {
         init();
     }
+
+    // --- IFRAME INJECTION FOR GUTENBERG BLOCK EDITOR ---
+    function injectIntoIframe(iframe) {
+        try {
+            const win = iframe.contentWindow;
+            if (!win || win._fcmMonitorInjected) return;
+            
+            win._fcmMonitorInjected = true;
+            console.log("FCM Reels: Injecting monitor into iframe", iframe.id || iframe.name);
+            
+            // Patch FormData in the iframe
+            const iframeAppend = win.FormData.prototype.append;
+            win.FormData.prototype.append = function(name, value, filename) {
+                console.log("FCM Reels (iframe): FormData.append called for key ->", name);
+                try {
+                    let isVideo = false;
+                    let actualFilename = filename;
+                    const isFileLike = value && typeof value === 'object' && typeof value.size === 'number' && typeof value.type === 'string';
+
+                    if (isFileLike) {
+                        actualFilename = actualFilename || value.name || 'video.mp4';
+                        if (value.type.startsWith('video/') || (actualFilename && actualFilename.match(/\.(mp4|mov|avi|wmv|flv|webm|mkv|m4v)$/i))) {
+                            isVideo = true;
+                        }
+                    }
+
+                    if (isVideo) {
+                        console.log("FCM Reels (iframe): Video detected ->", actualFilename);
+                        // Forward to main window
+                        if (window.handleFileSelection) {
+                            window.handleFileSelection({ files: [value], value: '' });
+                        }
+                    }
+                } catch(e) {}
+
+                if (filename) {
+                    return iframeAppend.call(this, name, value, filename);
+                } else {
+                    return iframeAppend.call(this, name, value);
+                }
+            };
+
+            // Patch fetch in iframe to catch raw uploads
+            const originalFetch = win.fetch;
+            win.fetch = function() {
+                // If it's the video-upload endpoint and the body is a FormData, our append patch catches it.
+                // But just in case, we can also log here.
+                return originalFetch.apply(this, arguments);
+            };
+
+        } catch (e) {
+            // Cross-origin iframe, ignore
+        }
+    }
+
+    // Monitor for iframes being added (e.g. Gutenberg editor-canvas)
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+                if (node.tagName === 'IFRAME') {
+                    node.addEventListener('load', () => injectIntoIframe(node));
+                } else if (node.querySelectorAll) {
+                    const iframes = node.querySelectorAll('iframe');
+                    iframes.forEach(iframe => {
+                        iframe.addEventListener('load', () => injectIntoIframe(iframe));
+                    });
+                }
+            });
+        });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Also inject into any existing iframes
+    document.querySelectorAll('iframe').forEach(iframe => {
+        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+            injectIntoIframe(iframe);
+        } else {
+            iframe.addEventListener('load', () => injectIntoIframe(iframe));
+        }
+    });
+
 })();
