@@ -218,6 +218,8 @@ function fcm_reels_output_social_meta($feed_id)
         }
         if (is_array($settings) && !empty($settings['posterSrc'])) {
             $thumb_url = $settings['posterSrc'];
+        } elseif (is_array($settings) && !empty($settings['thumbnail'])) {
+            $thumb_url = $settings['thumbnail'];
         }
     }
 
