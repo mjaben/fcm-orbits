@@ -190,7 +190,7 @@ function fcm_reels_output_social_meta($feed_id)
     // Fetch the post content for the description and title
     $posts_tbl = $wpdb->prefix . 'fcom_posts';
     $feed_post = $wpdb->get_row($wpdb->prepare(
-        "SELECT content, author_id FROM {$posts_tbl} WHERE id = %d LIMIT 1",
+        "SELECT message, user_id FROM {$posts_tbl} WHERE id = %d LIMIT 1",
         $feed_id
     ));
 
@@ -198,13 +198,13 @@ function fcm_reels_output_social_meta($feed_id)
     $title = 'Video Post';
     
     if ($feed_post) {
-        $description = wp_strip_all_tags($feed_post->content);
+        $description = wp_strip_all_tags($feed_post->message);
         // Truncate description for meta tag
         if (mb_strlen($description) > 200) {
             $description = mb_substr($description, 0, 197) . '...';
         }
         
-        $user_info = get_userdata($feed_post->author_id);
+        $user_info = get_userdata($feed_post->user_id);
         if ($user_info) {
             $title = $user_info->display_name . ' posted a video';
         }
