@@ -234,6 +234,26 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
+                // Draw Play Button Overlay
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const radius = Math.max(Math.min(canvas.width, canvas.height) * 0.08, 30); 
+                
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.fill();
+                
+                const tSize = radius * 0.5;
+                const tOffsetX = centerX - (tSize * 0.3);
+                ctx.beginPath();
+                ctx.moveTo(tOffsetX, centerY - (tSize * 0.8));
+                ctx.lineTo(tOffsetX + (tSize * 1.5), centerY);
+                ctx.lineTo(tOffsetX, centerY + (tSize * 0.8));
+                ctx.closePath();
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
                 resolve(dataUrl);
                 
